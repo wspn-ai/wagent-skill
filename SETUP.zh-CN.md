@@ -14,7 +14,7 @@
 ## 第 1 步 —— 克隆
 
 ```bash
-git clone https://github.com/<owner>/wagent-skill.git
+git clone https://github.com/wspn-ai/wagent-skill.git
 cd wagent-skill
 ```
 
@@ -40,13 +40,6 @@ export SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/<your_alchemy_key>
 ```
 
 两种都行 —— shell env 永远赢 `.env`,所以 `.env` 当默认配置留着、临时用 `export` 覆盖也没问题。`.env` 在 `.gitignore` 里,不会被误提交。
-
-```bash
-export PAYMENT_BACKEND=local
-export LOCAL_NETWORK=sepolia
-export AGENT_WALLET_PRIVATE_KEY=0x<你的一次性私钥>
-export SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/<your_alchemy_key>
-```
 
 用 `python3 -c "import secrets; print('0x' + secrets.token_hex(32))"` 生成一个一次性私钥。**绝不要复用持有真金的私钥。** 然后去 <https://sepoliafaucet.com> 领 Sepolia ETH,去 <https://faucet.circle.com> 领 Sepolia USDC。
 
@@ -173,4 +166,4 @@ agent 通过描述触发,比如 "买 X 工具 用 wagent" 或 "用 wagent 找一
 
 - 切到主网 / OKX 前先看 [WALLET-BACKENDS.zh-CN.md](WALLET-BACKENDS.zh-CN.md)。
 - 出错了看 [TROUBLESHOOTING.zh-CN.md](TROUBLESHOOTING.zh-CN.md)。
-- 想反过来,自己当卖家做商户和工具 → 看 [W Connector 接入手册](https://github.com/<owner>/wconnector-integration)。
+- 想反过来,自己当卖家做商户和工具 → 看 [W Connector 接入手册](https://github.com/wspn-ai/wconnector-integration)。

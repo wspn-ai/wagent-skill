@@ -32,7 +32,7 @@ The agent thinks → finds a tool that solves the user's task → pays USDC/USDT
 
 ```bash
 # 1. Clone
-git clone https://github.com/<owner>/wagent-skill.git
+git clone https://github.com/wspn-ai/wagent-skill.git
 cd wagent-skill
 
 # 2. Pick a backend (Sepolia testnet is free; pick this to play)
@@ -99,4 +99,4 @@ MIT — see [LICENSE](LICENSE).
 
 ## Issues, PRs
 
-GitHub Issues and PRs welcome. For protocol-level questions, see the **[W Connector integration guide](https://github.com/<owner>/wconnector-integration)**.
+GitHub Issues and PRs welcome. For protocol-level questions (anything about how the W Connector network itself works — merchant onboarding, settlement, gateway behavior), file an issue on the **[W Connector integration repo](https://github.com/wspn-ai/wconnector-integration/issues)** instead.

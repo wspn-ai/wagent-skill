@@ -32,7 +32,7 @@ agent 思考 → 找到能解决用户任务的工具 → 付 USDC/USDT/WUSD →
 
 ```bash
 # 1. 克隆
-git clone https://github.com/<owner>/wagent-skill.git
+git clone https://github.com/wspn-ai/wagent-skill.git
 cd wagent-skill
 
 # 2. 选后端(想玩玩选 Sepolia 测试网,免费)
@@ -99,4 +99,4 @@ MIT —— 详见 [LICENSE](LICENSE)。
 
 ## Issues / PR
 
-欢迎提 Issues 和 PR。如果问的是协议层面的问题,看 **[W Connector 接入手册](https://github.com/<owner>/wconnector-integration)**。
+欢迎提 Issues 和 PR。如果问的是**协议层面**的问题(W Connector 网络本身、商户接入、结算、gateway 行为之类),去 **[W Connector 接入仓库](https://github.com/wspn-ai/wconnector-integration/issues)** 提 issue。

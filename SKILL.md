@@ -248,8 +248,7 @@ plus the matching import line at the top of `buy.py`).
 
 - Python 3.11+
 - `web3` (only when `PAYMENT_BACKEND=local`): `pip install web3`
-- `onchainos` CLI (only when `PAYMENT_BACKEND=okx`): see
-  [docs/runbooks/okx-wallet-setup.md](../docs/runbooks/okx-wallet-setup.md)
+- `onchainos` CLI (only when `PAYMENT_BACKEND=okx`)
 
 ## A2A protocol summary
 

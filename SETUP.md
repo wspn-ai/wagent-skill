@@ -14,7 +14,7 @@ End-to-end first run, from `git clone` to a successful tool call. ~10 minutes.
 ## Step 1 — Clone
 
 ```bash
-git clone https://github.com/<owner>/wagent-skill.git
+git clone https://github.com/wspn-ai/wagent-skill.git
 cd wagent-skill
 ```
 
@@ -167,4 +167,4 @@ All harnesses inherit your shell environment. Put your `PAYMENT_BACKEND`, `AGENT
 
 - Read [WALLET-BACKENDS.md](WALLET-BACKENDS.md) before switching to mainnet / OKX.
 - Read [TROUBLESHOOTING.md](TROUBLESHOOTING.md) when something fails.
-- Build your own merchant + tool on the seller side → [W Connector integration guide](https://github.com/<owner>/wconnector-integration).
+- Build your own merchant + tool on the seller side → [W Connector integration guide](https://github.com/wspn-ai/wconnector-integration).
