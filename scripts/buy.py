@@ -280,10 +280,33 @@ def _extract_delivery_for_save(task: dict, order_no: str) -> dict | None:
 
 
 def _failure_reason(task: dict) -> str:
-    """Human-readable error from task artifacts + connector order detail."""
+    """Human-readable error from task artifacts + messages + connector detail.
+
+    Shop-node A2A handlers return failures as ``{state: 'failed', message,
+    artifacts: []}``; the router stores that ``message`` into
+    ``task.messages`` (not artifacts). Scanning only artifacts therefore
+    surfaces 'unknown' for the most common failure modes (handler crash,
+    gateway 502, validation error). Read ``task.messages`` first, then fall
+    back to artifacts and the connector's order detail."""
     reason = ""
     text_reason = ""
     order_no = ""
+
+    # Agent-role messages from newest to oldest; the most recent text part is
+    # the failure cause (handlers push exactly one on transition to 'failed').
+    for m in reversed(task.get("messages") or []):
+        if m.get("role") != "agent":
+            continue
+        for p in m.get("parts") or []:
+            d = p.get("data") or {}
+            for key in ("error", "message", "reason"):
+                if not reason and d.get(key):
+                    reason = d[key]
+            if not text_reason and p.get("type") == "text" and p.get("text"):
+                text_reason = p["text"]
+        if reason or text_reason:
+            break
+
     for a in task.get("artifacts") or []:
         for p in a.get("parts") or []:
             d = p.get("data") or {}

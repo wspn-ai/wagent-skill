@@ -1,6 +1,6 @@
 ---
 name: wagent
-version: 4.0.0
+version: 0.0.1
 description: 'Discover MCP-tool merchants on the W Connector network and buy a single tool call, paid in USDC / USDT / WUSD on Ethereum mainnet. Default backend is OKX Agentic Wallet; a self-managed test wallet (web3.py) is available for small-balance experimentation.'
 ---
 
