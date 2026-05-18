@@ -2,21 +2,22 @@
 
 > **中文 → [TROUBLESHOOTING.zh-CN.md](TROUBLESHOOTING.zh-CN.md)**
 
-Common failures and exact fixes. Every error message produced by `buy.py` includes a `Recovery:` hint — read it first.
+Common failures and exact fixes. Every error message produced by `buy.py`
+includes a `Recovery:` hint — read it first.
 
 ## `discover.py` empty / errors
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `ERROR: gateway request failed (after retries): ...` | `CONNECTOR_URL` wrong or unreachable | Check the URL in env or pass `--connector-url https://connector-dev.wcheckout.app` explicitly (dev) or `https://connector.wcheckout.app` (prod). The default in the skill points at our dev gateway. |
-| Empty table, exit 0 | No active merchants on the gateway | Try `--query ''` (empty) to list all. If still empty, the demo gateway has no live merchants — contact us. |
-| `404` from a merchant during fanout | One merchant down, others fine | Logged as `[WARN]`. Non-fatal — other rows still load. |
+| `ERROR: connector request failed (after retries): ...` | Network egress blocked or DNS issue | Verify you can reach `https://connector.wcheckout.app` — `curl -I https://connector.wcheckout.app/merchants/search`. |
+| Empty table, exit 0 | No matching merchants for your query | Try `--query ''` (empty) to list everything. |
+| `[WARN] <merchant>: ...` lines | One merchant down, others fine | Non-fatal — other rows still load. |
 
 ## `buy.py` — payment errors
 
 ### `ERROR: --call-body is not valid JSON`
 
-Single-quote shell pitfall on Windows / fish shell. Use:
+Shell-quoting pitfall (most common on Windows / fish). Use a heredoc:
 
 ```bash
 buy.py ... --call-body "$(cat <<'EOF'
@@ -25,57 +26,84 @@ EOF
 )"
 ```
 
-### `Schema validation failed (no payment was made)`
+### `Schema validation failed — no payment was made`
 
-Your `--call-body` doesn't match the product's `input_schema`. The skill **refuses to pay** if input is invalid (saving you from paying for a failed call).
+`--call-body` doesn't match the product's `input_schema`. The skill **refuses
+to pay** if input is invalid — this saves you from paying for a failed call.
 
-Look at the error — it tells you exactly which field is wrong:
+Look at the error — it names the bad field:
 
 ```
-'address' is required
-✗ no payment was made. Fix --call-body and retry.
+missing required field 'address'
+   No payment was made. Fix --call-body and retry.
 ```
 
 Inspect the tool's input schema:
 
 ```bash
-curl -s https://<agent_url>/.well-known/agent.json | jq '.skills[] | select(.metadata.tool_name=="<tool>") | .metadata.input_schema'
+curl -s https://<agent_url>/.well-known/agent.json \
+  | jq '.skills[] | select(.metadata.tool_name=="<tool>") | .metadata.input_schema'
 ```
 
-### `Order ORD_xxx FAILED` after payment was sent
+### `Tool call failed AFTER successful payment`
 
-The on-chain tx went through but the merchant marked the order failed. Most likely causes (from the recovery hint):
+The on-chain payment went through but the tool returned 4xx/5xx. The shop
+only decrements the call_token on a successful invocation, so **your token
+is still valid**. Do NOT re-run `buy.py` (that pays again).
 
-1. **Stablelink didn't see the payment** → wait 60s and re-check `${CONNECTOR_URL}/orders/<order_no>`. Sometimes block reorgs delay observation.
-2. **Wrong token / amount** → you sent USDT but the order expected USDC, or sent on Sepolia when product is mainnet-only. The skill is supposed to catch this before paying — if you see this, file an issue.
-3. **Failed orders are terminal.** You cannot retry. The skill auto-creates a new order if you re-run `buy.py`.
+Fix `--call-body` and retry with the saved token:
 
-### `insufficient funds for gas`
+```bash
+python3 scripts/buy.py --use-token <order_no> --call-body '<corrected JSON>'
+```
 
-Your wallet doesn't have enough ETH (or chain-native token) to pay gas. Top up. On Sepolia, faucets give you 0.5 ETH/day. On mainnet, keep a $5 ETH buffer.
+If you no longer want the token, void it for refund:
 
-### `recent matching purchase detected (5-min window)`
+```bash
+python3 scripts/buy.py --return-token <order_no>
+```
 
-Anti-duplicate guard. The skill saw you ran an almost-identical `buy.py` within 5 minutes and is asking you to confirm. To override:
+### `In-flight purchase detected — refusing to create a duplicate`
+
+Anti-duplicate guard. The skill saw a near-identical purchase started within
+the last 30 minutes. If you're sure the previous run never broadcast a tx
+(e.g. crashed before payment):
 
 ```bash
 buy.py ... --force-new
 ```
 
+If a tx WAS sent, wait for settlement — do not pass `--force-new`.
+
 ### `Wrong --agent-url`
 
-You passed a gateway URL where a merchant URL was expected. The two are different:
+You passed the connector URL where a merchant URL was expected. The two are
+different:
 
-- **Gateway** (the W Connector): `connector-dev.wcheckout.app` (dev) or `connector.wcheckout.app` (prod) — this is where the registry / order machine lives.
-- **Merchant agent**: every merchant has their own URL — these are the rows in the last column of `discover.py` output. **They are NOT a fixed list** — merchants come and go.
+- **Connector** (`connector.wcheckout.app`) — the registry / order machine.
+- **Merchant agent** — every merchant has its own URL, shown in the last
+  column of `discover.py` output.
 
-Always copy the `agent_url` from your own `discover.py` output instead of guessing.
+Always copy the `agent_url` from your own `discover.py` output.
+
+### `settlement not confirmed within 180s`
+
+The on-chain transfer succeeded but the shop never observed it. The error
+prints three likely shop misconfigs — verify the order's connector view:
+
+```bash
+curl https://connector.wcheckout.app/orders/<order_no>
+```
+
+If the connector shows `status: PAID`, the shop is lagging — wait and retry
+the merchant's side. If the connector shows `status: PAYING`, Stablelink
+or the shop webhook isn't relaying.
 
 ## OKX backend errors
 
-### `onchainos wallet status` fails / not installed
+### `onchainos` command not found
 
-The `okx-agentic-wallet` skill must be installed first. Without it, the OKX backend can't sign. Falls back: switch to `PAYMENT_BACKEND=local` for now.
+Install per <https://web3.okx.com/onchainos/dev-docs/home/install-your-agentic-wallet>, then `onchainos wallet login <email>`.
 
 ### `Policy rejected — exceeds daily limit`
 
@@ -86,47 +114,35 @@ You hit your OKX Policy cap. Either:
 
 ### `OTP expired`
 
-Re-login:
-
 ```bash
 onchainos wallet login your-email@example.com
-onchainos wallet verify <new-otp>
 ```
 
-## Local backend errors
+### `insufficient balance` / `wallet underfunded`
 
-### `private key has wrong length`
-
-Did you forget the `0x` prefix? Should be `0x` + 64 hex chars.
-
-### `Transaction underpriced`
-
-Bump the priority fee. The skill picks a sensible default but congested chains need more. Set:
-
-```bash
-export WAGENT_PRIORITY_FEE_GWEI=3
-```
-
-(Only respected on mainnet — Sepolia is fine with defaults.)
+The skill tries the next token in your `--token` priority list automatically.
+If all tokens are underfunded, top up the OKX wallet (USDC / USDT / WUSD)
+and a small ETH buffer for gas.
 
 ## Token / state issues
 
-### `--use-token` says "token not found"
+### `--use-token` says "no saved token"
 
-Tokens are persisted at `~/.wagent/tokens.json`. If you cleared the file or your `HOME` changed (Docker / CI), the saved tokens are gone. Run a fresh `buy.py`.
+Tokens are persisted at `~/.wagent/tokens.json`. If you cleared the file or
+your `HOME` changed (Docker / CI), saved tokens are gone. Run a fresh `buy.py`.
 
 ### `--return-token` rejected
 
-Already returned or expired. Check `cat ~/.wagent/tokens.json | jq '.[<order_no>]'`.
+Already returned, expired, or partially used. Inspect:
+
+```bash
+cat ~/.wagent/tokens.json | jq '.["<order_no>"]'
+```
 
 ## Getting help
 
-If none of the above match:
+If none of the above match, file a GitHub issue with:
 
-1. Re-run with `--verbose` (if your version supports it)
-2. Capture the full output including the `Recovery:` hint
-3. File a GitHub issue with:
-   - The exact command (redact private key)
-   - Full stderr
-   - `python3 --version`, `pip show web3` versions
-   - Gateway URL you're hitting
+- The exact command (no secrets)
+- Full stderr
+- `python3 --version` and `onchainos --version`

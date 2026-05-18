@@ -2,21 +2,21 @@
 
 > **English → [TROUBLESHOOTING.md](TROUBLESHOOTING.md)**
 
-常见错误 + 精确解决方法。`buy.py` 每一条错误信息都会带 `Recovery:` 提示,先读它。
+常见错误和具体解决方法。`buy.py` 每个错误都会带一行 `Recovery:` 提示 —— 先读这个。
 
-## discover 报错
+## `discover.py` 空表 / 报错
 
 | 现象 | 原因 | 解决 |
 |---|---|---|
-| `ERROR: gateway request failed (after retries): ...` | `CONNECTOR_URL` 写错或不通 | 检查 env,或显式传 `--connector-url https://connector-dev.wcheckout.app`(dev) / `https://connector.wcheckout.app`(prod)。skill 默认指向 dev gateway。 |
-| 空表,exit 0 | 平台上没有活跃商户 | 试 `--query ''` 列全部。还空就是 demo gateway 上没商户在线了,联系我们。 |
-| 部分商户 `404` | 某个商户挂了,其他正常 | 会打 `[WARN]`。不致命 —— 其他行照样加载。 |
+| `ERROR: connector request failed (after retries): ...` | 网络出不去或 DNS 问题 | 确认能访问到 `https://connector.wcheckout.app` —— `curl -I https://connector.wcheckout.app/merchants/search`。 |
+| 空表 + exit 0 | 没匹配上的商户 | 试 `--query ''`（空字符串）列出所有。 |
+| `[WARN] <商户>: ...` 行 | 某个商户挂了，其他正常 | 非致命 —— 其他行照样列。 |
 
-## buy 支付错误
+## `buy.py` —— 付款错误
 
 ### `ERROR: --call-body is not valid JSON`
 
-Shell 引号坑(Windows / fish 常见)。用 here-doc:
+shell 引号坑（Windows / fish 常见）。用 heredoc：
 
 ```bash
 buy.py ... --call-body "$(cat <<'EOF'
@@ -25,108 +25,110 @@ EOF
 )"
 ```
 
-### `Schema validation failed (no payment was made)`
+### `Schema validation failed — no payment was made`
 
-`--call-body` 不符合 product 的 `input_schema`。skill **拒绝付款**(免得付了钱跑不了)。
+`--call-body` 不符合 product 的 `input_schema`。Skill **拒绝付款** —— 这是省下你的钱。
 
-错误里会精确告诉你哪个字段错:
+报错信息会指出哪个字段错了：
 
 ```
-'address' is required
-✗ no payment was made. Fix --call-body and retry.
+missing required field 'address'
+   No payment was made. Fix --call-body and retry.
 ```
 
-查 input schema:
+查工具的 input schema：
 
 ```bash
-curl -s https://<agent_url>/.well-known/agent.json | jq '.skills[] | select(.metadata.tool_name=="<tool>") | .metadata.input_schema'
+curl -s https://<agent_url>/.well-known/agent.json \
+  | jq '.skills[] | select(.metadata.tool_name=="<tool>") | .metadata.input_schema'
 ```
 
-### 付完款 `Order ORD_xxx FAILED`
+### `Tool call failed AFTER successful payment`
 
-链上转账走了但商户把订单标 failed。最常见的原因(看 recovery 提示):
+链上付款成功了但工具返回 4xx / 5xx。Shop 只在调用成功时才扣 token，**所以你的 token 还有效**。**不要**重跑 `buy.py`（那是再付一次）。
 
-1. **Stablelink 没看到付款** → 等 60s 再去 `${CONNECTOR_URL}/orders/<order_no>` 看。区块重组有时会延迟。
-2. **token / 金额错** → 你付了 USDT 但订单要 USDC,或在 Sepolia 上付了主网才有的商品。skill 本该在付款前拦下,看到这个错请提 issue。
-3. **FAILED 订单是终态**,**不能重试**。重新跑 `buy.py` 会自动开新单。
+修好 `--call-body`，用保存的 token 重试：
 
-### `insufficient funds for gas`
+```bash
+python3 scripts/buy.py --use-token <order_no> --call-body '<改好的 JSON>'
+```
 
-钱包里 ETH(或原生币)不够付 gas。充钱。Sepolia faucet 每天 0.5 ETH;主网留 $5 ETH 缓冲。
+如果不想要这个 token 了，销毁退款：
 
-### `recent matching purchase detected (5-min window)`
+```bash
+python3 scripts/buy.py --return-token <order_no>
+```
 
-防重复购买保护。5 分钟内检测到几乎一样的 `buy.py`,要你确认。强制下单:
+### `In-flight purchase detected — refusing to create a duplicate`
+
+防重复下单守卫。Skill 检测到 30 分钟内有几乎一样的购买。如果你确定上次根本没付出去（比如付款前就崩了）：
 
 ```bash
 buy.py ... --force-new
 ```
 
+如果上次已经发了 tx，等结算就行 —— 不要加 `--force-new`。
+
 ### `Wrong --agent-url`
 
-你把 gateway URL 当 merchant URL 传了。两者不是一回事:
+你把 connector 的 URL 当 merchant URL 传了。两者不一样：
 
-- **Gateway**(W Connector):`connector-dev.wcheckout.app`(dev)或 `connector.wcheckout.app`(prod) —— 商户注册表 / 订单状态机的位置。
-- **Merchant agent**:每个商户有自己的 URL —— `discover.py` 输出表里最后一列。**不是固定的几个**,商户来来去去。
+- **Connector**（`connector.wcheckout.app`）—— 注册中心 / 订单机器。
+- **Merchant agent** —— 每个商户自己的 URL，在 `discover.py` 输出最后一列。
 
-永远从你自己跑 `discover.py` 的输出里拷 `agent_url`,**不要猜**。
+务必从你自己的 `discover.py` 输出里复制 `agent_url`。
 
-## OKX 后端报错
+### `settlement not confirmed within 180s`
 
-### `onchainos wallet status` 失败 / 没装
+链上付款成功了但 shop 没观察到。报错会列出三种常见 shop 端配置问题。先查 connector 视角：
 
-得先装 `okx-agentic-wallet` skill。没它 OKX 后端就签不了名。临时方案:切回 `PAYMENT_BACKEND=local`。
+```bash
+curl https://connector.wcheckout.app/orders/<order_no>
+```
+
+如果 connector 显示 `status: PAID`，说明 shop 在掉队 —— 等等或联系商户运维。如果显示 `status: PAYING`，说明 Stablelink 或 shop webhook 链路没通。
+
+## OKX 后端错误
+
+### `onchainos` 命令不存在
+
+按 <https://web3.okx.com/zh-hans/onchainos/dev-docs/home/install-your-agentic-wallet> 装好，然后 `onchainos wallet login <邮箱>`。
 
 ### `Policy rejected — exceeds daily limit`
 
-撞到 OKX Policy 上限了。要么:
+撞到 OKX Policy 上限了。要么：
 
-- 等 UTC 0 点重置
+- 等到当日重置（UTC 0 点）
 - 去 <https://web3.okx.com/portfolio/agentic-wallet-policy> 调高
 
 ### `OTP expired`
 
-重新登录:
-
 ```bash
 onchainos wallet login your-email@example.com
-onchainos wallet verify <新-otp>
 ```
 
-## Local 后端报错
+### `insufficient balance` / `wallet underfunded`
 
-### `private key has wrong length`
-
-忘了加 `0x` 前缀?应该是 `0x` + 64 个十六进制字符。
-
-### `Transaction underpriced`
-
-提高 priority fee。skill 给的默认值在主网拥堵时不够。设:
-
-```bash
-export WAGENT_PRIORITY_FEE_GWEI=3
-```
-
-(只在主网生效,Sepolia 默认就够。)
+Skill 自动尝试 `--token` 优先级列表里的下一个。所有 token 都缺钱时，往 OKX 钱包充值（USDC / USDT / WUSD），别忘了留一点 ETH 当 gas。
 
 ## Token / 状态问题
 
-### `--use-token` 报 "token not found"
+### `--use-token` 提示 "no saved token"
 
-Token 持久化在 `~/.wagent/tokens.json`。你清空了文件、或者 `HOME` 变了(Docker / CI 里很常见),保存的 token 就丢了。重新跑 `buy.py`。
+Token 持久化在 `~/.wagent/tokens.json`。如果清过这个文件，或者 `HOME` 变了（Docker / CI），保存的 token 就没了。重新跑 `buy.py`。
 
-### `--return-token` 被拒绝
+### `--return-token` 被拒
 
-已经 return 过了或过期了。检查 `cat ~/.wagent/tokens.json | jq '.[<order_no>]'`。
+已经销毁、过期、或部分用过。看一下：
 
-## 还是不行?
+```bash
+cat ~/.wagent/tokens.json | jq '.["<order_no>"]'
+```
 
-如果以上都对不上:
+## 找帮助
 
-1. 加 `--verbose` 重跑(版本支持的话)
-2. 完整输出 + `Recovery:` 提示
-3. 提 GitHub issue,带:
-   - 完整命令(私钥脱敏)
-   - 完整 stderr
-   - `python3 --version`、`pip show web3` 版本
-   - 你打的 Gateway URL
+上面都不对，提 GitHub issue，附：
+
+- 跑的命令（去掉密钥）
+- 完整 stderr
+- `python3 --version` 和 `onchainos --version`
